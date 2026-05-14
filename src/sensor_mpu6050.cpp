@@ -65,7 +65,7 @@ void initMPU6050()
     break;
   }
 
-  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
+  mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
   Serial.print("Filter bandwidth set to: ");
   switch (mpu.getFilterBandwidth())
   {
@@ -93,7 +93,7 @@ void initMPU6050()
   }
 }
 
-void sampleAccelerometer()
+bool sampleAccelerometer()
 {
   unsigned long currentMicros = micros();
 
@@ -109,7 +109,9 @@ void sampleAccelerometer()
     waveBufferZ[waveIndex] = a.acceleration.z;
 
     waveIndex = (waveIndex + 1) % WAVE_BUFFER_SIZE;
+    return true;
   }
+  return false;
 }
 
 float* getWaveBufferX()

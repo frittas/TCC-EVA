@@ -4,16 +4,45 @@
 #include "power_management.h"
 
 static unsigned long buttonPressStart = 0;
+static bool shortClickPending = false;
+
+// Variáveis para o seletor (Pino 5)
+static unsigned long lastSelectorDebounce = 0;
+static bool lastSelectorState = HIGH;
 
 void initButton()
 {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(SELECTOR_BUTTON_PIN, INPUT_PULLUP); // Botão Seletor de Modo
 }
 
 bool isButtonPressed()
 {
   return digitalRead(BUTTON_PIN) == LOW;
+}
+
+bool checkSelectorButton(unsigned long currentMillis)
+{
+  bool reading = digitalRead(SELECTOR_BUTTON_PIN);
+  bool triggered = false;
+
+  if (reading != lastSelectorState) {
+    if ((currentMillis - lastSelectorDebounce) > DEBOUNCE_DELAY_MS) {
+      if (reading == LOW) { // Pressionado
+        triggered = true;
+      }
+      lastSelectorState = reading;
+      lastSelectorDebounce = currentMillis;
+    }
+  }
+  return triggered;
+}
+
+bool wasShortClickDetected() {
+  bool status = shortClickPending;
+  shortClickPending = false;
+  return status;
 }
 
 void checkSleepButton(unsigned long currentMillis)
@@ -33,6 +62,10 @@ void checkSleepButton(unsigned long currentMillis)
   }
   else
   {
+    // Se soltou o botão antes do tempo de Deep Sleep, é um clique curto
+    if (buttonPressStart != 0 && (currentMillis - buttonPressStart < LONG_PRESS_MS)) {
+      shortClickPending = true;
+    }
     buttonPressStart = 0;
   }
 }

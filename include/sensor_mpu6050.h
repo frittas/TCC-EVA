@@ -5,7 +5,7 @@
 void initMPU6050();
 
 // Sample accelerometer data into waveform buffers
-void sampleAccelerometer();
+bool sampleAccelerometer();
 
 // Get direct reference to waveform buffers and index
 float* getWaveBufferX();
