@@ -19,8 +19,14 @@ void drawSleepCountdown(unsigned long remainingMs);
 // Draw wake-up countdown (for handleWakeFromSleep)
 void drawWakeCountdown(unsigned long remainingMs);
 
-// Draw the acceleration waveform
-void drawWaveform(int waveOffset);
+// Draw status text at the display footer
+void drawFooterStatus(const char* status);
+
+// Draw the acceleration waveform for all MPU axes
+void drawWaveformAxes();
+
+// Draw a single axis waveform within a defined display window
+void drawWaveformForAxis(float* buffer, int top, int bottom, const char* label);
 
 // Update display on screen
 void updateDisplay();

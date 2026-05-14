@@ -61,15 +61,22 @@ void drawBatteryIndicator()
 
 void drawStatusText(const char* text)
 {
-  display.setCursor(0, 16);
+  display.setCursor(0, 0);
   display.println(text);
+}
+
+static void drawPowerSymbol(int x, int y)
+{
+  const int radius = 5;
+  display.drawCircle(x + radius, y + radius, radius, SSD1306_WHITE);
+  display.drawLine(x + radius, y + 1, x + radius, y + radius + 1, SSD1306_WHITE);
+  display.fillCircle(x + radius, y + radius, 1, SSD1306_WHITE);
 }
 
 void drawSleepCountdown(unsigned long remainingMs)
 {
-  display.setCursor(0, 16);
-  display.println("Segure 5s para dormir");
-  display.print("Faltam: ");
+  drawPowerSymbol(0, 0);
+  display.setCursor(14, 0);
   display.print((remainingMs + 999) / 1000);
   display.println(" s");
 }
@@ -83,6 +90,13 @@ void drawWakeCountdown(unsigned long remainingMs)
   display.println(" s");
 }
 
+void drawFooterStatus(const char* status)
+{
+  display.setCursor(0, SCREEN_HEIGHT - 8);
+  display.print("STATUS: ");
+  display.print(status);
+}
+
 void drawSleepMessage()
 {
   display.setCursor(0, 0);
@@ -91,21 +105,34 @@ void drawSleepMessage()
   display.println("para acordar");
 }
 
-void drawWaveform(int waveOffset)
+void drawWaveformForAxis(float* buffer, int top, int bottom, const char* label)
 {
-  float* buffer = getWaveBuffer();
   int* index = getWaveIndex();
+
+  display.setCursor(0, top);
+  display.print(label);
 
   for (int i = 0; i < WAVE_BUFFER_SIZE - 1; i++)
   {
     int idx1 = (*index + i) % WAVE_BUFFER_SIZE;
     int idx2 = (*index + i + 1) % WAVE_BUFFER_SIZE;
     int x1 = map(i, 0, WAVE_BUFFER_SIZE - 1, 0, SCREEN_WIDTH - 1);
-    int y1 = map(buffer[idx1], -16, 16, SCREEN_HEIGHT - 1, waveOffset);
+    int y1 = map(buffer[idx1], -16, 16, bottom, top);
     int x2 = map(i + 1, 0, WAVE_BUFFER_SIZE - 1, 0, SCREEN_WIDTH - 1);
-    int y2 = map(buffer[idx2], -16, 16, SCREEN_HEIGHT - 1, waveOffset);
+    int y2 = map(buffer[idx2], -16, 16, bottom, top);
     display.drawLine(x1, y1, x2, y2, SSD1306_WHITE);
   }
+}
+
+void drawWaveformAxes()
+{
+  const int topMargin = 18;
+  const int axisHeight = 10;
+  const int axisSpacing = 2;
+
+  drawWaveformForAxis(getWaveBufferX(), topMargin, topMargin + axisHeight, "X");
+  drawWaveformForAxis(getWaveBufferY(), topMargin + axisHeight + axisSpacing, topMargin + 2 * axisHeight + axisSpacing, "Y");
+  drawWaveformForAxis(getWaveBufferZ(), topMargin + 2 * (axisHeight + axisSpacing), topMargin + 3 * axisHeight + 2 * axisSpacing, "Z");
 }
 
 void updateDisplay()

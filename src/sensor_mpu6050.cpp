@@ -6,7 +6,9 @@
 #include "sensor_mpu6050.h"
 
 static Adafruit_MPU6050 mpu;
-static float waveBuffer[WAVE_BUFFER_SIZE];
+static float waveBufferX[WAVE_BUFFER_SIZE];
+static float waveBufferY[WAVE_BUFFER_SIZE];
+static float waveBufferZ[WAVE_BUFFER_SIZE];
 static int waveIndex = 0;
 static unsigned long lastSampleTime = 0;
 
@@ -102,14 +104,27 @@ void sampleAccelerometer()
     sensors_event_t a, g, temp;
     mpu.getEvent(&a, &g, &temp);
 
-    waveBuffer[waveIndex] = a.acceleration.x;
+    waveBufferX[waveIndex] = a.acceleration.x;
+    waveBufferY[waveIndex] = a.acceleration.y;
+    waveBufferZ[waveIndex] = a.acceleration.z;
+
     waveIndex = (waveIndex + 1) % WAVE_BUFFER_SIZE;
   }
 }
 
-float* getWaveBuffer()
+float* getWaveBufferX()
 {
-  return waveBuffer;
+  return waveBufferX;
+}
+
+float* getWaveBufferY()
+{
+  return waveBufferY;
+}
+
+float* getWaveBufferZ()
+{
+  return waveBufferZ;
 }
 
 int* getWaveIndex()

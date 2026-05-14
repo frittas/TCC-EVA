@@ -10,7 +10,7 @@
 #define BATTERY_PIN 1
 
 // Button behavior
-#define LONG_PRESS_MS 5000
+#define LONG_PRESS_MS 3000
 
 // Battery parameters (LiPo)
 #define BATTERY_MAX_VOLTAGE 4.2

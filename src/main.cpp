@@ -17,16 +17,18 @@ void renderDisplayFrame(unsigned long currentMillis);
 void setup()
 {
   Serial.begin(115200);
-  
+  pinMode(RGB_BUILTIN, OUTPUT);
+  digitalWrite(RGB_BUILTIN, LOW); // Turn off led
+
   // Initialize all modules
   initBattery();
   initButton();
   initDisplay();
   initMPU6050();
-  
+
   // Handle wake from deep sleep if applicable
   handleWakeFromSleep();
-  
+
   delay(100);
 }
 
@@ -52,11 +54,11 @@ void loop()
 void renderDisplayFrame(unsigned long currentMillis)
 {
   clearDisplay();
-  
+
   // Draw battery indicator at top-right
   drawBatteryIndicator();
-  
-  // Draw status or sleep countdown
+
+  // Draw header text when not in long press sleep countdown
   if (isButtonPressActive())
   {
     unsigned long remainingMs = getButtonPressTimeRemaining(currentMillis);
@@ -64,13 +66,15 @@ void renderDisplayFrame(unsigned long currentMillis)
   }
   else
   {
-    drawStatusText("EVA - Monitorando...");
+    drawStatusText("E.V.A.");
   }
-  
-  // Draw waveform
-  int waveOffset = isButtonPressActive() ? 34 : 26;
-  drawWaveform(waveOffset);
-  
+
+  // Draw waveform lines for each MPU axis
+  drawWaveformAxes();
+
+  // Draw footer status text
+  drawFooterStatus("NORMAL");
+
   // Update display
   updateDisplay();
 }

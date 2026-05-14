@@ -4,11 +4,13 @@
 // Initialize MPU6050 sensor
 void initMPU6050();
 
-// Sample accelerometer data into waveform buffer
+// Sample accelerometer data into waveform buffers
 void sampleAccelerometer();
 
-// Get direct reference to waveform buffer and index
-float* getWaveBuffer();
+// Get direct reference to waveform buffers and index
+float* getWaveBufferX();
+float* getWaveBufferY();
+float* getWaveBufferZ();
 int* getWaveIndex();
 
 #endif // SENSOR_MPU6050_H
