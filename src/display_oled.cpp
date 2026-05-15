@@ -5,6 +5,7 @@
 #include "config.h"
 #include <string.h>
 #include "display_oled.h"
+#include "input_button.h" // Para isButtonPressActive e getButtonPressTimeRemaining
 #include "battery_management.h"
 #include "sensor_mpu6050.h"
 
@@ -245,4 +246,60 @@ void drawDataTransferAnimation(unsigned long currentMillis)
 void updateDisplay()
 {
   display.display();
+}
+
+void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, bool isMenuOpen, OperationMode menuSelectedMode)
+{
+  clearDisplay();
+
+  // Draw battery indicator at top-right
+  drawBatteryIndicator();
+
+  // Draw header text when not in long press sleep countdown
+  if (isButtonPressActive())
+  {
+    unsigned long remainingMs = getButtonPressTimeRemaining(currentMillis);
+    drawSleepCountdown(remainingMs);
+    if (currentMode == MONITORING)
+      drawWaveformAxes();
+  }
+  else if (isMenuOpen)
+  {
+    drawSelectionMenu(menuSelectedMode);
+  }
+  else
+  {
+    drawStatusText(currentMode == MONITORING ? "ANALISE" : "COLETA");
+
+    if (currentMode == MONITORING)
+    {
+      drawWaveformAxes();
+    }
+    else
+    {
+      drawDataTransferAnimation(currentMillis);
+    }
+  }
+
+  // Exibe o estado da máquina de estados no rodapé, apenas se o menu não estiver aberto
+  if (!isMenuOpen)
+  {
+    // Animação dos 3 pontos: muda a cada 500ms (ciclo de 0 a 3 pontos)
+    int numDots = (currentMillis / 500) % 4;
+    char statusMsg[20];
+
+    if (currentMode == MONITORING)
+    {
+      snprintf(statusMsg, sizeof(statusMsg), "PROCESSANDO%.*s", numDots, "...");
+    }
+    else
+    {
+
+      snprintf(statusMsg, sizeof(statusMsg), "ENVIANDO%.*s", numDots, "...");
+    }
+    drawFooterStatus(statusMsg);
+  }
+
+  // Update display
+  updateDisplay();
 }

@@ -1,5 +1,6 @@
 #ifndef DISPLAY_OLED_H
 #define DISPLAY_OLED_H
+#include "config.h" // For OperationMode
 
 // Initialize OLED display
 void initDisplay();
@@ -33,5 +34,11 @@ void updateDisplay();
 
 // Draw "Entering sleep" message
 void drawSleepMessage();
+
+void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, bool isMenuOpen, OperationMode menuSelectedMode);
+
+bool checkSelectorButton(unsigned long currentMillis);
+
+bool wasShortClickDetected();
 
 #endif // DISPLAY_OLED_H

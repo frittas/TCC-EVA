@@ -14,22 +14,6 @@ static unsigned long last_interval_us = 0;
 static bool isMenuOpen = false;
 static OperationMode menuSelectedMode = MONITORING;
 
-// Helper functions for button press status and waveform rendering
-extern bool sampleAccelerometer();
-extern float *getWaveBufferX();
-extern float *getWaveBufferY();
-extern float *getWaveBufferZ();
-extern int *getWaveIndex();
-extern unsigned long getButtonPressTimeRemaining(unsigned long currentMillis);
-extern bool checkSelectorButton(unsigned long currentMillis);
-extern bool wasShortClickDetected();
-extern bool isButtonPressActive();
-extern void drawSelectionMenu(int selectedMode);
-extern void drawBigCenteredText(const char *text);
-extern void drawDataTransferAnimation(unsigned long currentMillis);
-
-void renderDisplayFrame(unsigned long currentMillis);
-
 void setup()
 {
   Serial.begin(115200);
@@ -109,62 +93,6 @@ void loop()
   if (currentMillis - lastDisplayTime >= DISPLAY_INTERVAL)
   {
     lastDisplayTime = currentMillis;
-    renderDisplayFrame(currentMillis);
+    renderDisplayFrame(currentMillis, currentMode, isMenuOpen, menuSelectedMode);
   }
-}
-
-void renderDisplayFrame(unsigned long currentMillis)
-{
-  clearDisplay();
-
-  // Draw battery indicator at top-right
-  drawBatteryIndicator();
-
-  // Draw header text when not in long press sleep countdown
-  if (isButtonPressActive())
-  {
-    unsigned long remainingMs = getButtonPressTimeRemaining(currentMillis);
-    drawSleepCountdown(remainingMs);
-    if (currentMode == MONITORING)
-      drawWaveformAxes();
-  }
-  else if (isMenuOpen)
-  {
-    drawSelectionMenu(menuSelectedMode);
-  }
-  else
-  {
-    drawStatusText(currentMode == MONITORING ? "ANALISE" : "COLETA");
-
-    if (currentMode == MONITORING)
-    {
-      drawWaveformAxes();
-    }
-    else
-    {
-      drawDataTransferAnimation(currentMillis);
-    }
-  }
-
-  // Exibe o estado da máquina de estados no rodapé, apenas se o menu não estiver aberto
-  if (!isMenuOpen)
-  {
-    // Animação dos 3 pontos: muda a cada 500ms (ciclo de 0 a 3 pontos)
-    int numDots = (currentMillis / 500) % 4;
-    char statusMsg[20];
-
-    if (currentMode == MONITORING)
-    {
-      snprintf(statusMsg, sizeof(statusMsg), "PROCESSANDO%.*s", numDots, "...");
-    }
-    else
-    {
-
-      snprintf(statusMsg, sizeof(statusMsg), "ENVIANDO%.*s", numDots, "...");
-    }
-    drawFooterStatus(statusMsg);
-  }
-
-  // Update display
-  updateDisplay();
 }
