@@ -23,13 +23,8 @@ void handleWakeFromSleep()
     delay(100);
   }
 
-  if (isButtonPressed() && millis() - wakeStart >= LONG_PRESS_MS)
+  if (!(isButtonPressed() && millis() - wakeStart >= LONG_PRESS_MS))
   {
-    Serial.println("Woke up by long button press");
-  }
-  else
-  {
-    Serial.println("Wake button release too early, back to sleep");
     while (isButtonPressed())
     {
       delay(10);
@@ -44,8 +39,6 @@ void enterDeepSleep()
   clearDisplay();
   drawSleepMessage();
   updateDisplay();
-
-  Serial.println("Entering deep sleep...");
 
   // Aguarda soltar o botao antes de entrar em deep sleep
   while (isButtonPressed())
