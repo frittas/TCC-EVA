@@ -4,3 +4,4 @@
 .vscode/launch.json
 .vscode/ipch
 mqtt_token.txt
+MQTT_TOKEN.TXT
