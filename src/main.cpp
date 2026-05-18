@@ -6,6 +6,7 @@
 #include "sensor_mpu6050.h"
 #include "power_management.h"
 #include "mqtt.h"
+#include "wifi_management.h"
 
 // Variável preservada durante o Deep Sleep
 RTC_DATA_ATTR OperationMode currentMode = MONITORING;
@@ -25,11 +26,14 @@ void setup()
   Serial.printf("Build: %s %s\n", __DATE__, __TIME__);
   Serial.printf("ESP32 SDK version: %s\n", ESP.getSdkVersion());
   Serial.printf("Heap inicial: %u bytes\n", ESP.getFreeHeap());
+#else
+  neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Ensure LED is off using the correct driver
+  Serial.println(F("=== PRODUCTION MODE ATIVO ==="));
+  Serial.printf("Build: %s %s\n", __DATE__, __TIME__);
 #endif
 
   // Initialize all modules
 #if DEBUG_MODE
-  neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Ensure LED is off using the correct driver
   Serial.println(F("Inicializando modulo de bateria..."));
 #endif
   initBattery();
@@ -45,6 +49,10 @@ void setup()
   Serial.println(F("Inicializando MPU6050..."));
 #endif
   initMPU6050();
+#if DEBUG_MODE
+  Serial.println(F("Inicializando WiFi..."));
+#endif
+  initWiFi();
 #if DEBUG_MODE
   Serial.println(F("Inicializando MQTT..."));
 #endif

@@ -31,6 +31,11 @@ APLICAÇÃO PRINCIPAL (main.cpp)
     │   ├─ handleWakeFromSleep()
     │   └─ enterDeepSleep()
     │
+    ├→ 📡 WIFI
+    │   ├─ initWiFi()
+    │   ├─ ensureWiFiConnected()
+    │   └─ getWiFiRSSI()
+    │
     ├→ ☁️ MQTT
     │   ├─ initMQTT()
     │   ├─ updateMQTT()

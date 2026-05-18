@@ -71,7 +71,6 @@ O projeto foi reorganizado em módulos separados com responsabilidades bem defin
 - `enterDeepSleep()` - Entra em deep sleep
 
 #### 7. **mqtt** (mqtt.h / .cpp)
-- Gerenciamento de conexão WiFi (STA com fallback para AP).
 - Conexão com broker MQTT (ThingsBoard) usando Access Token.
 - Publicação de telemetria (TinyML, RMS, bateria e status) a cada 5 segundos.
 - Injeção de segurança: Token carregado de arquivo local via script de pré-build.
@@ -82,7 +81,16 @@ O projeto foi reorganizado em módulos separados com responsabilidades bem defin
 - `isMQTTConnected()`: Verifica status da conexão para o display.
 - `enviarDadosParaNuvem()`: Processa dados brutos, calcula RMS e agenda o envio do payload JSON.
 
-#### 8. **main.cpp** - Orquestrador
+#### 8. **wifi_management** (wifi_management.h / .cpp)
+- Gestão de conexão WiFi (STA com fallback para AP).
+- Centralização de credenciais de rede.
+
+**Funções públicas:**
+- `initWiFi()`: Inicializa a rede.
+- `ensureWiFiConnected()`: Verifica e recupera conexão.
+- `getWiFiRSSI()`: Força do sinal.
+
+#### 9. **main.cpp** - Orquestrador
 - Inicialização de todos os módulos
 - Loop principal com tarefas priorizadas
 - Renderização de frames

@@ -44,6 +44,17 @@ void drawBatteryIndicator()
   int width = 16;
   int height = 8;
 
+  // Símbolo de WIFI para indicar conexão MQTT (exibido à esquerda do percentual de bateria)
+  if (isMQTTConnected())
+  {
+    int cx = x - 35;
+    // Desenha ícone WiFi um pouco mais largo e definido
+    display.drawPixel(cx, y + 6, SSD1306_WHITE);                // Ponto base
+    display.drawLine(cx - 2, y + 4, cx + 2, y + 4, SSD1306_WHITE); // Primeiro arco
+    display.drawLine(cx - 3, y + 2, cx + 3, y + 2, SSD1306_WHITE); // Segundo arco
+    display.drawLine(cx - 4, y, cx + 4, y, SSD1306_WHITE);         // Terceiro arco
+  }
+
   // Draw battery outline
   display.drawRect(x, y, width - 2, height, SSD1306_WHITE);
   display.drawRect(x + width - 2, y + 2, 2, height - 4, SSD1306_WHITE);
@@ -221,8 +232,8 @@ void drawWaveformRMS(int top, int bottom, const char *label)
 void drawWaveformAxes()
 {
   // Substitui exibição dos eixos por RMS triaxial
-  const int topMargin = 18;
-  const int waveHeight = 28; // ocupar área maior
+  const int topMargin = 26;
+  const int waveHeight = 32; // Ocupar área maior agora que o rodapé está livre
   drawWaveformRMS(topMargin, topMargin + waveHeight, "RMS");
 }
 
@@ -336,18 +347,13 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
     // Animação dos 3 pontos: muda a cada 500ms (ciclo de 0 a 3 pontos)
     int numDots = (currentMillis / 500) % 4;
     char statusMsg[20];
-
-    if (currentMode == MONITORING)
+    
+    // Removemos o status MQTT do rodapé no modo MONITORING para limpar a tela
+    if (currentMode != MONITORING)
     {
-      const char *base = isMQTTConnected() ? "MQTT:ONLINE" : "MQTT:OFFLINE";
-      snprintf(statusMsg, sizeof(statusMsg), "%s%.*s", base, numDots, "...");
-    }
-    else
-    {
-
       snprintf(statusMsg, sizeof(statusMsg), "ENVIANDO%.*s", numDots, "...");
+      drawFooterStatus(statusMsg);
     }
-    drawFooterStatus(statusMsg);
   }
 
   // Update display

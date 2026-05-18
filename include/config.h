@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 // Debug configuration
-#define DEBUG_MODE 1
+#define DEBUG_MODE 0
 
 // Operation Modes
 enum OperationMode { MONITORING, DATA_COLLECTION };

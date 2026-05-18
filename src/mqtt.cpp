@@ -1,13 +1,8 @@
-#include <WiFi.h>
 #include <PubSubClient.h>
 #include <cmath>
 #include "battery_management.h"
+#include "wifi_management.h"
 
-// Configurações da Rede e ThingsBoard
-const char *WIFI_SSID = "CASA-515";
-const char *WIFI_PASSWORD = "Lola@beringela1234";
-const char *AP_SSID = "EVA_AP";
-const char *AP_PASSWORD = "evabeta2026";
 const char *TB_SERVER = "192.168.3.2"; // Ou o IP do seu servidor local
 
 #ifndef MQTT_TOKEN
@@ -17,14 +12,8 @@ const char *TB_SERVER = "192.168.3.2"; // Ou o IP do seu servidor local
 #define STRINGIFY(x) STRINGIFY_IMPL(x)
 static const char *TOKEN = STRINGIFY(MQTT_TOKEN);
 
-// Modo de WiFi: Station (STA) ou Access Point (AP)
-enum AppWifiMode { APP_WIFI_MODE_STA, APP_WIFI_MODE_AP };
-static const AppWifiMode WIFI_MODE = APP_WIFI_MODE_STA; // Ajuste para APP_WIFI_MODE_AP se desejar iniciar em AP mode
-static const bool WIFI_FALLBACK_TO_AP = true; // Se station falhar, alterna para AP automaticamente
-static const unsigned long WIFI_STA_CONNECT_TIMEOUT_MS = 15000; // Tempo máximo para conectar em STA
-
-WiFiClient espClient;
-PubSubClient mqttClient(espClient);
+static WiFiClient espClient;
+static PubSubClient mqttClient(espClient);
 
 // Variáveis de controle de timing - Envio a cada 1 segundo
 static unsigned long lastMQTTSendTime = 0;
@@ -45,94 +34,38 @@ static float lastRMSValue = 0.0f;
 static String lastNormaStatus = "Saudável (Zonas A/B)";
 static bool hasPendingData = false;
 
-static AppWifiMode currentWifiMode = WIFI_MODE;
-
-bool conectarWiFiStation()
-{
-    if (WiFi.status() == WL_CONNECTED)
-        return true;
-
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-    unsigned long startAttemptTime = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < WIFI_STA_CONNECT_TIMEOUT_MS)
-    {
-        delay(500);
-    }
-
-    if (WiFi.status() == WL_CONNECTED)
-    {
-        Serial.printf("WiFi STA conectado: %s (IP: %s)\n", WIFI_SSID, WiFi.localIP().toString().c_str());
-        return true;
-    }
-
-    Serial.println("Falha ao conectar em modo STA.");
-    return false;
-}
-
-void iniciarWiFiAP()
-{
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP(AP_SSID, AP_PASSWORD);
-    Serial.printf("WiFi AP iniciado: %s (IP: %s)\n", AP_SSID, WiFi.softAPIP().toString().c_str());
-}
+// Variáveis de controle de timing para reconexão MQTT
+static unsigned long lastMQTTReconnectAttempt = 0;
+static const unsigned long MQTT_RECONNECT_INTERVAL_MS = 5000; // Tentar reconectar a cada 5 segundos
 
 // Tenta conectar ao MQTT, mas não bloqueia indefinidamente.
 // Retorna true se conectado, false caso contrário.
 bool conectarMQTT()
 {
-    const int maxAttempts = 3;
-    int attempt = 0;
+    if (mqttClient.connected())
+        return true;
 
-    while (!mqttClient.connected() && attempt < maxAttempts)
+    if (!ensureWiFiConnected())
+        return false;
+
+    // No ThingsBoard, o "username" é o próprio Access Token e a senha fica em branco
+    if (mqttClient.connect("ESP32S3_Sensor", TOKEN, NULL))
     {
-        attempt++;
-
-        if (currentWifiMode == APP_WIFI_MODE_STA)
-        {
-            if (!conectarWiFiStation())
-            {
-                if (WIFI_FALLBACK_TO_AP)
-                {
-                    currentWifiMode = APP_WIFI_MODE_AP;
-                    iniciarWiFiAP();
-                }
-                else
-                {
-                    Serial.println("WiFi STA indisponível e fallback desabilitado.");
-                    delay(500);
-                    continue;
-                }
-            }
-        }
-        else
-        {
-            iniciarWiFiAP();
-        }
-
-        // No ThingsBoard, o "username" é o próprio Access Token e a senha fica em branco
-        if (mqttClient.connect("ESP32S3_Sensor", TOKEN, NULL))
-        {
-            Serial.println("Conectado ao MQTT do ThingsBoard!");
-            return true;
-        }
-        else
-        {
-            Serial.print("Falha na conexão MQTT. Erro: ");
-            Serial.println(mqttClient.state());
-            delay(1000);
-        }
+        Serial.println("Conectado ao MQTT do ThingsBoard!");
+        return true;
     }
-
-    Serial.println("Não foi possível conectar ao MQTT após tentativas limitadas.");
-    return mqttClient.connected();
+    else
+    {
+        Serial.print("Falha na conexão MQTT. Erro: ");
+        Serial.println(mqttClient.state());
+        // Não há delay aqui para evitar bloqueio
+        return false;
+    }
 }
 
 // Inicializa o módulo MQTT
 void initMQTT()
 {
-    currentWifiMode = WIFI_MODE;
     mqttClient.setServer(TB_SERVER, 1883);
     // Tenta conectar ao MQTT, mas não bloqueia o setup se falhar
     bool connected = conectarMQTT();
@@ -150,13 +83,18 @@ void initMQTT()
 // Reconecta ao ThingsBoard se desconectado
 void reconectarMQTT()
 {
-    if (!mqttClient.connected())
+    if (!mqttClient.connected()) // Se não estiver conectado
     {
-        Serial.println("Reconectando ao ThingsBoard...");
-        // Tenta reconectar sem bloquear indefinidamente
-        if (!conectarMQTT())
+        unsigned long currentMillis = millis();
+        // Tenta reconectar apenas após o intervalo definido
+        if (currentMillis - lastMQTTReconnectAttempt >= MQTT_RECONNECT_INTERVAL_MS)
         {
-            Serial.println("Reconexão MQTT falhou; tentaremos novamente mais tarde.");
+            lastMQTTReconnectAttempt = currentMillis; // Atualiza o tempo da última tentativa
+            Serial.println("Tentando reconectar ao ThingsBoard...");
+            if (!conectarMQTT()) // Tenta conectar uma vez
+            {
+                Serial.println("Reconexão MQTT falhou; tentaremos novamente mais tarde.");
+            }
         }
     }
 }
@@ -214,15 +152,15 @@ RMSTriaxialResult calcularRMSTriaxial(float *bufferX, float *bufferY, float *buf
     // 4. Classificação baseada na ISO 10816-3 (Classe II)
     if (resultado.valorRMS < 2.8)
     {
-        resultado.statusNorma = "Saudável (Zonas A/B)";
+        resultado.statusNorma = "(Zonas A/B)";
     }
     else if (resultado.valorRMS >= 2.8 && resultado.valorRMS <= 7.1)
     {
-        resultado.statusNorma = "Alerta (Zona C)";
+        resultado.statusNorma = "(Zona C)";
     }
     else
     {
-        resultado.statusNorma = "Crítico (Zona D)";
+        resultado.statusNorma = "(Zona D)";
     }
 
     return resultado;
@@ -249,7 +187,7 @@ void updateMQTT()
         if (hasPendingData)
         {
             // Calcula RMS a partir dos dados armazenados
-            int rssi = WiFi.RSSI();
+            int rssi = getWiFiRSSI();
             int battery_level = getBatteryPercentage();
 
             String payloadStr = "{";

@@ -37,7 +37,7 @@
 🔹 Amostragem contínua de vibração (1 kHz)  
 🔹 Processamento FFT para transformação frequencial  
 🔹 Display ao vivo da forma de onda  
-🔹 Integração MQTT com WiFi Station e Fallback AP  
+🔹 Conectividade WiFi (STA/AP) e integração MQTT  
 🔹 Indicador de bateria  
 🔹 Sleep profundo para economizar energia  
 🔹 Contagem regressiva de botão para wake/sleep  
@@ -128,6 +128,7 @@ TCC-EVA/
     ├── sensor_mpu6050.cpp
     └── power_management.cpp
     ├── mqtt.cpp
+    ├── wifi_management.cpp
     └── load_mqtt_token.py       ← Script de segurança do build
 ```
 
@@ -189,8 +190,11 @@ O código é organizado em **6 módulos independentes**:
 - Countdown de wake
 - `enterDeepSleep()`, `handleWakeFromSleep()`
 
-### 7. **mqtt** - WiFi e Nuvem
-- Conexão estável com ThingsBoard
+### 7. **wifi_management** - Conectividade
+- Gerencia WiFi Station e Fallback Access Point
+
+### 8. **mqtt** - Telemetria Nuvem
+- Conexão robusta com ThingsBoard
 - Envio JSON de IA, RMS e Bateria
 - Modo AP para diagnóstico caso WiFi falhe
 
