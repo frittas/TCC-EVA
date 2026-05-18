@@ -2,7 +2,7 @@
 
 ## O que foi feito
 
-Seu código `main.cpp` foi separado em **6 módulos independentes** com responsabilidades claras:
+Seu código `main.cpp` foi separado em **7 módulos independentes** com responsabilidades claras:
 
 ### 📋 Módulos Criados
 
@@ -14,6 +14,10 @@ Seu código `main.cpp` foi separado em **6 módulos independentes** com responsa
 | 4️⃣ | **input_button** | Detecção e long-press do botão |
 | 5️⃣ | **sensor_mpu6050** | Inicialização e leitura do acelerómetro |
 | 6️⃣ | **power_management** | Sleep, wake e controle de energia |
+| 7️⃣ | **mqtt** | Conexão WiFi e telemetria ThingsBoard |
+
+## Segurança e Build
+- **Token MQTT Externo**: O token de acesso não está mais hardcoded. O arquivo `load_mqtt_token.py` lê `mqtt_token.txt` durante a compilação e injeta como macro.
 
 ## Estrutura de Arquivos
 

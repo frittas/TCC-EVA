@@ -70,7 +70,19 @@ O projeto foi reorganizado em módulos separados com responsabilidades bem defin
 - `handleWakeFromSleep()` - Processa acordar do deep sleep
 - `enterDeepSleep()` - Entra em deep sleep
 
-#### 7. **main.cpp** - Orquestrador
+#### 7. **mqtt** (mqtt.h / .cpp)
+- Gerenciamento de conexão WiFi (STA com fallback para AP).
+- Conexão com broker MQTT (ThingsBoard) usando Access Token.
+- Publicação de telemetria (TinyML, RMS, bateria e status) a cada 5 segundos.
+- Injeção de segurança: Token carregado de arquivo local via script de pré-build.
+
+**Funções públicas:**
+- `initMQTT()`: Inicializa o cliente e tenta conexão.
+- `updateMQTT()`: Mantém o loop MQTT e gerencia o timer de envio de telemetria.
+- `isMQTTConnected()`: Verifica status da conexão para o display.
+- `enviarDadosParaNuvem()`: Processa dados brutos, calcula RMS e agenda o envio do payload JSON.
+
+#### 8. **main.cpp** - Orquestrador
 - Inicialização de todos os módulos
 - Loop principal com tarefas priorizadas
 - Renderização de frames
@@ -83,15 +95,15 @@ O projeto foi reorganizado em módulos separados com responsabilidades bem defin
 │  (Orquestração e loop principal)    │
 └─────────────────┬───────────────────┘
                   │
-        ┌─────────┼─────────┬─────────────┐
-        │         │         │             │
-        ▼         ▼         ▼             ▼
-    ┌───────┐ ┌────────┐ ┌──────────┐ ┌──────────┐
-    │Battery│ │Display │ │ Button   │ │Sensor    │
-    │Mgmt   │ │OLED    │ │Input     │ │MPU6050   │
-    └───────┘ └────────┘ └──────────┘ └──────────┘
-        │         │         │             │
-        └─────────┼─────────┼─────────────┘
+        ┌─────────┼─────────┬─────────────┬──────────┐
+        │         │         │             │          │
+        ▼         ▼         ▼             ▼          ▼
+    ┌───────┐ ┌────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+    │Battery│ │Display │ │ Button   │ │Sensor    │ │  MQTT    │
+    │Mgmt   │ │OLED    │ │Input     │ │MPU6050   │ │ (Cloud)  │
+    └───────┘ └────────┘ └──────────┘ └──────────┘ └──────────┘
+        │         │         │             │          │
+        └─────────┼─────────┼─────────────┴──────────┘
                   │
             ┌─────┴──────┐
             │            │
@@ -130,7 +142,8 @@ include/
 ├── display_oled.h
 ├── input_button.h
 ├── sensor_mpu6050.h
-└── power_management.h
+├── power_management.h
+└── mqtt.h
 
 src/
 ├── main.cpp
@@ -139,6 +152,7 @@ src/
 ├── input_button.cpp
 ├── sensor_mpu6050.cpp
 └── power_management.cpp
+└── mqtt.cpp
 ```
 
 ### ✅ Benefícios da Estrutura Modular

@@ -31,6 +31,12 @@ APLICAÇÃO PRINCIPAL (main.cpp)
     │   ├─ handleWakeFromSleep()
     │   └─ enterDeepSleep()
     │
+    ├→ ☁️ MQTT
+    │   ├─ initMQTT()
+    │   ├─ updateMQTT()
+    │   ├─ isMQTTConnected()
+    │   └─ enviarDadosParaNuvem()
+    │
     └→ ⚙️ CONFIG
         └─ Defines e constantes centralizadas
 ```
@@ -46,6 +52,7 @@ APLICAÇÃO PRINCIPAL (main.cpp)
 | `input_button.h` | Detecção de botão |
 | `sensor_mpu6050.h` | Acelerómetro |
 | `power_management.h` | Sleep/wake |
+| `mqtt.h` | WiFi e telemetria |
 
 ### Implementações (`src/`)
 | Arquivo | Módulo |
@@ -56,6 +63,7 @@ APLICAÇÃO PRINCIPAL (main.cpp)
 | `input_button.cpp` | Botão |
 | `sensor_mpu6050.cpp` | Sensor |
 | `power_management.cpp` | Power |
+| `mqtt.cpp` | WiFi e MQTT |
 
 ## Fluxo de Setup
 

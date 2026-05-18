@@ -12,7 +12,7 @@
 
 ✅ **Detecção Precoce de Falhas** - Identifica padrões anormais antes da quebra  
 ✅ **Redução de Tempo de Inatividade** - Manutenção planejada ao invés de emergencial  
-✅ **Análise em Tempo Real** - Sem dependência de cloud/internet  
+✅ **Análise em Tempo Real** - Análise local com telemetria cloud opcional (ThingsBoard)  
 ✅ **Eficiência Energética** - Sistema embarcado de baixo consumo com deep sleep  
 ✅ **Dados Locais** - Privacidade e segurança dos dados de vibração  
 
@@ -37,6 +37,7 @@
 🔹 Amostragem contínua de vibração (1 kHz)  
 🔹 Processamento FFT para transformação frequencial  
 🔹 Display ao vivo da forma de onda  
+🔹 Integração MQTT com WiFi Station e Fallback AP  
 🔹 Indicador de bateria  
 🔹 Sleep profundo para economizar energia  
 🔹 Contagem regressiva de botão para wake/sleep  
@@ -82,6 +83,9 @@ cd TCC-EVA
 # Instalar dependências (PlatformIO)
 pio run -t envlist
 
+# Criar arquivo de token para o ThingsBoard
+echo "SEU_TOKEN_AQUI" > mqtt_token.txt
+
 # Compilar
 pio run
 
@@ -113,7 +117,8 @@ TCC-EVA/
 │   ├── display_oled.h
 │   ├── input_button.h
 │   ├── sensor_mpu6050.h
-│   └── power_management.h
+│   ├── power_management.h
+│   └── mqtt.h
 │
 └── src/
     ├── main.cpp                 ← Orquestrador principal
@@ -122,6 +127,8 @@ TCC-EVA/
     ├── input_button.cpp
     ├── sensor_mpu6050.cpp
     └── power_management.cpp
+    ├── mqtt.cpp
+    └── load_mqtt_token.py       ← Script de segurança do build
 ```
 
 ---
@@ -181,6 +188,11 @@ O código é organizado em **6 módulos independentes**:
 - Deep sleep com interrupção externa
 - Countdown de wake
 - `enterDeepSleep()`, `handleWakeFromSleep()`
+
+### 7. **mqtt** - WiFi e Nuvem
+- Conexão estável com ThingsBoard
+- Envio JSON de IA, RMS e Bateria
+- Modo AP para diagnóstico caso WiFi falhe
 
 ---
 
@@ -287,6 +299,7 @@ void setup() {
 │  • Adafruit_SSD1306                 │
 │  • arduinoFFT                       │
 │  • esp_sleep (esp-idf)              │
+│  • PubSubClient (MQTT)              │
 ├─────────────────────────────────────┤
 │  Arduino Framework / ESP-IDF        │
 ├─────────────────────────────────────┤
