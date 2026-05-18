@@ -1,6 +1,9 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Debug configuration
+#define DEBUG_MODE 1
+
 // Operation Modes
 enum OperationMode { MONITORING, DATA_COLLECTION };
 
@@ -34,7 +37,7 @@ enum OperationMode { MONITORING, DATA_COLLECTION };
 #define DISPLAY_INTERVAL 100    // 100ms = 10Hz
 
 // Sensor Configuration
-#define WAVE_BUFFER_SIZE 128
+#define WAVE_BUFFER_SIZE 1024
 #define SAMPLE_INTERVAL 1000    // 1000us = 1kHz
 
 #endif // CONFIG_H

@@ -5,6 +5,7 @@
 #include "input_button.h"
 #include "sensor_mpu6050.h"
 #include "power_management.h"
+#include "mqtt.h"
 
 // Variável preservada durante o Deep Sleep
 RTC_DATA_ATTR OperationMode currentMode = MONITORING;
@@ -17,16 +18,48 @@ static OperationMode menuSelectedMode = MONITORING;
 void setup()
 {
   Serial.begin(115200);
-  neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Ensure LED is off using the correct driver
+  delay(100);
+
+#if DEBUG_MODE
+  Serial.println(F("=== DEBUG MODE ATIVO ==="));
+  Serial.printf("Build: %s %s\n", __DATE__, __TIME__);
+  Serial.printf("ESP32 SDK version: %s\n", ESP.getSdkVersion());
+  Serial.printf("Heap inicial: %u bytes\n", ESP.getFreeHeap());
+#endif
 
   // Initialize all modules
+#if DEBUG_MODE
+  neopixelWrite(RGB_BUILTIN, 0, 0, 0); // Ensure LED is off using the correct driver
+  Serial.println(F("Inicializando modulo de bateria..."));
+#endif
   initBattery();
+#if DEBUG_MODE
+  Serial.println(F("Inicializando modulo de botao..."));
+#endif
   initButton();
+#if DEBUG_MODE
+  Serial.println(F("Inicializando display..."));
+#endif
   initDisplay();
+#if DEBUG_MODE
+  Serial.println(F("Inicializando MPU6050..."));
+#endif
   initMPU6050();
+#if DEBUG_MODE
+  Serial.println(F("Inicializando MQTT..."));
+#endif
+  initMQTT(); // Inicializa conexão MQTT com ThingsBoard
 
   // Handle wake from deep sleep if applicable
+#if DEBUG_MODE
+  Serial.println(F("Verificando wake from sleep..."));
+#endif
   handleWakeFromSleep();
+
+#if DEBUG_MODE
+  Serial.println(F("Setup concluido. Entrando no loop."));
+  Serial.printf("Heap disponivel: %u bytes\n", ESP.getFreeHeap());
+#endif
 
   delay(100);
 }
@@ -77,6 +110,18 @@ void loop()
     if (hasNewData)
     {
       // Aqui entram as funções de TinyML e análise FFT (Manutenção Preditiva)
+      // EXEMPLO: Simular resultado de inferência para enviar via MQTT
+      float *x = getWaveBufferX();
+      float *y = getWaveBufferY();
+      float *z = getWaveBufferZ();
+      int bufferSize = WAVE_BUFFER_SIZE;
+
+      // Simulação: resultado da inferência de ML
+      String statusPredito = "Saudável"; // Resultado do TinyML
+      float confianca = 0.95f;           // Confiança do modelo (0-1)
+
+      // Envia dados para MQTT (armazena para envio a cada 5s)
+      enviarDadosParaNuvem(statusPredito, confianca, x, y, z, bufferSize);
     }
   }
   else if (hasNewData)
@@ -89,10 +134,14 @@ void loop()
     Serial.printf("%.2f,%.2f,%.2f\n", x[lastIdx], y[lastIdx], z[lastIdx]);
   }
 
-  // Task 4: Update display at lower priority (10 Hz)
+  // Task 4: Update MQTT (envio periódico a cada 5 segundos)
+  updateMQTT();
+
+  // Task 5: Update display at lower priority (10 Hz)
   if (currentMillis - lastDisplayTime >= DISPLAY_INTERVAL)
   {
     lastDisplayTime = currentMillis;
     renderDisplayFrame(currentMillis, currentMode, isMenuOpen, menuSelectedMode);
   }
+  // Serial.println("Loop principal rodando... (Descomente o código para ativar as funcionalidades)"); // Placeholder
 }

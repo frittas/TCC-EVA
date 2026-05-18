@@ -8,6 +8,7 @@
 #include "input_button.h" // Para isButtonPressActive e getButtonPressTimeRemaining
 #include "battery_management.h"
 #include "sensor_mpu6050.h"
+#include "mqtt.h"
 
 static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -18,10 +19,8 @@ void initDisplay()
   if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS))
   {
     Serial.println(F("SSD1306 allocation failed"));
-    while (true)
-    {
-      delay(10);
-    }
+    Serial.println(F("Continuando sem display OLED."));
+    return;
   }
 
   display.clearDisplay();
@@ -166,15 +165,65 @@ void drawWaveformForAxis(float *buffer, int top, int bottom, const char *label)
   }
 }
 
+// Desenha a forma de onda do RMS triaxial calculado a partir das buffers X/Y/Z
+void drawWaveformRMS(int top, int bottom, const char *label)
+{
+  float *bx = getWaveBufferX();
+  float *by = getWaveBufferY();
+  float *bz = getWaveBufferZ();
+  int *indexPtr = getWaveIndex();
+  int idx = *indexPtr;
+
+  // Calcula média (DC) por eixo
+  float meanX = 0, meanY = 0, meanZ = 0;
+  for (int i = 0; i < WAVE_BUFFER_SIZE; i++)
+  {
+    meanX += bx[i];
+    meanY += by[i];
+    meanZ += bz[i];
+  }
+  meanX /= WAVE_BUFFER_SIZE;
+  meanY /= WAVE_BUFFER_SIZE;
+  meanZ /= WAVE_BUFFER_SIZE;
+
+  // Cria um buffer temporário de magnitudes AC
+  static float magBuf[WAVE_BUFFER_SIZE];
+  float maxMag = 0.001f; // evitar divisão por zero
+  for (int i = 0; i < WAVE_BUFFER_SIZE; i++)
+  {
+    int ridx = (idx + i) % WAVE_BUFFER_SIZE;
+    float acX = bx[ridx] - meanX;
+    float acY = by[ridx] - meanY;
+    float acZ = bz[ridx] - meanZ;
+    float mag = sqrt(acX * acX + acY * acY + acZ * acZ);
+    magBuf[i] = mag;
+    if (mag > maxMag) maxMag = mag;
+  }
+
+  // Desenha label
+  display.setCursor(0, top);
+  display.print(label);
+
+  // Mapeia e desenha a linha
+  for (int i = 0; i < WAVE_BUFFER_SIZE - 1; i++)
+  {
+    int x1 = map(i, 0, WAVE_BUFFER_SIZE - 1, 10, SCREEN_WIDTH - 1);
+    int x2 = map(i + 1, 0, WAVE_BUFFER_SIZE - 1, 10, SCREEN_WIDTH - 1);
+    // Map magnitude to vertical position (bottom..top)
+    float v1 = magBuf[i] / maxMag; // 0..1
+    float v2 = magBuf[i + 1] / maxMag;
+    int y1 = bottom - (int)((bottom - top - 4) * v1); // leave small padding
+    int y2 = bottom - (int)((bottom - top - 4) * v2);
+    display.drawLine(x1, y1, x2, y2, SSD1306_WHITE);
+  }
+}
+
 void drawWaveformAxes()
 {
+  // Substitui exibição dos eixos por RMS triaxial
   const int topMargin = 18;
-  const int axisHeight = 10;
-  const int axisSpacing = 2;
-
-  drawWaveformForAxis(getWaveBufferX(), topMargin, topMargin + axisHeight, "X");
-  drawWaveformForAxis(getWaveBufferY(), topMargin + axisHeight + axisSpacing, topMargin + 2 * axisHeight + axisSpacing, "Y");
-  drawWaveformForAxis(getWaveBufferZ(), topMargin + 2 * (axisHeight + axisSpacing), topMargin + 3 * axisHeight + 2 * axisSpacing, "Z");
+  const int waveHeight = 28; // ocupar área maior
+  drawWaveformRMS(topMargin, topMargin + waveHeight, "RMS");
 }
 
 void drawSelectionMenu(int selectedMode)
@@ -290,7 +339,8 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
 
     if (currentMode == MONITORING)
     {
-      snprintf(statusMsg, sizeof(statusMsg), "PROCESSANDO%.*s", numDots, "...");
+      const char *base = isMQTTConnected() ? "MQTT:ONLINE" : "MQTT:OFFLINE";
+      snprintf(statusMsg, sizeof(statusMsg), "%s%.*s", base, numDots, "...");
     }
     else
     {
