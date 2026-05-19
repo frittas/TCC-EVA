@@ -2,6 +2,9 @@
 #include <cmath>
 #include "battery_management.h"
 #include "wifi_management.h"
+#include "telemetry_scheduler.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 
 const char *TB_SERVER = "192.168.3.2"; // Ou o IP do seu servidor local
 
@@ -15,28 +18,20 @@ static const char *TOKEN = STRINGIFY(MQTT_TOKEN);
 static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 
-// Variáveis de controle de timing - Envio a cada 1 segundo
-static unsigned long lastMQTTSendTime = 0;
-static const unsigned long MQTT_SEND_INTERVAL_MS = 1000; // 1 segundos
+// Filas/Tarefas FreeRTOS para envio assíncrono
+typedef struct
+{
+    char payload[512];
+    unsigned long timestamp;
+} TelemetryMessage;
 
-// Estrutura para armazenar resultados do cálculo RMS Triaxial
-struct RMSTriaxialResult {
-    float mediaX, mediaY, mediaZ;      // Componentes DC (Gravidade)
-    float rmsX, rmsY, rmsZ;            // RMS individual por eixo
-    float valorRMS;                     // RMS Triaxial Combinado
-    String statusNorma;                // Classificação ISO 10816-3
-};
+static QueueHandle_t mqttQueue = NULL;
+static const int MQTT_QUEUE_LENGTH = 8;
 
-// Buffer para armazenar últimos dados - Persistência entre ciclos
-static String lastPredictedStatus = "MONITORANDO";
-static float lastConfidence = 0.0f;
-static float lastRMSValue = 0.0f;
-static String lastNormaStatus = "Saudável (Zonas A/B)";
-static bool hasPendingData = false;
-
-// Variáveis de controle de timing para reconexão MQTT
-static unsigned long lastMQTTReconnectAttempt = 0;
+// Intervalos e reconexão
+static const unsigned long MQTT_SEND_INTERVAL_MS = 1000;      // usado como timeout de dequeue
 static const unsigned long MQTT_RECONNECT_INTERVAL_MS = 5000; // Tentar reconectar a cada 5 segundos
+static unsigned long lastMQTTReconnectAttempt = 0;
 
 // Tenta conectar ao MQTT, mas não bloqueia indefinidamente.
 // Retorna true se conectado, false caso contrário.
@@ -67,35 +62,91 @@ bool conectarMQTT()
 void initMQTT()
 {
     mqttClient.setServer(TB_SERVER, 1883);
-    // Tenta conectar ao MQTT, mas não bloqueia o setup se falhar
-    bool connected = conectarMQTT();
-    lastMQTTSendTime = millis();
-    if (connected)
+
+    // Create queue for telemetry messages
+    if (mqttQueue == NULL)
     {
-        Serial.println("MQTT inicializado com sucesso!");
+        mqttQueue = xQueueCreate(MQTT_QUEUE_LENGTH, sizeof(TelemetryMessage));
+        if (mqttQueue == NULL)
+        {
+            Serial.println("[MQTT] Falha ao criar fila MQTT");
+        }
     }
-    else
+
+    // Create a FreeRTOS task to handle MQTT connection and publishing
+    extern void mqttTask(void *param);
+    xTaskCreatePinnedToCore(
+        mqttTask,
+        "MQTTTask",
+        4096,
+        NULL,
+        1,
+        NULL,
+        1);
+
+    Serial.println("MQTT inicializado (task assíncrona criada)");
+}
+
+// Tarefa FreeRTOS que gerencia conexão MQTT e publica mensagens da fila
+void mqttTask(void *param)
+{
+    TelemetryMessage msg;
+    for (;;)
     {
-        Serial.println("MQTT inicializado sem conexao. A reconexao sera tentada no loop.");
+        // Ensure WiFi and MQTT connection
+        if (!ensureWiFiConnected())
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            continue;
+        }
+
+        if (!mqttClient.connected())
+        {
+            unsigned long now = millis();
+            if (now - lastMQTTReconnectAttempt >= MQTT_RECONNECT_INTERVAL_MS)
+            {
+                lastMQTTReconnectAttempt = now;
+                Serial.println("Tentando reconectar ao ThingsBoard (task MQTT)...");
+                conectarMQTT();
+            }
+        }
+
+        mqttClient.loop();
+
+        // Aguarda por uma mensagem para enviar (timeout para permitir loop e reconexão)
+        if (mqttQueue != NULL)
+        {
+            if (xQueueReceive(mqttQueue, &msg, pdMS_TO_TICKS(MQTT_SEND_INTERVAL_MS)) == pdTRUE)
+            {
+                if (mqttClient.connected())
+                {
+                    if (mqttClient.publish("v1/devices/me/telemetry", msg.payload))
+                    {
+                        Serial.printf("[MQTT-Task] Telemetria enviada: %s\n", msg.payload);
+                    }
+                    else
+                    {
+                        Serial.println("[MQTT-Task] Erro ao publicar telemetria");
+                    }
+                }
+                else
+                {
+                    Serial.println("[MQTT-Task] MQTT desconectado, descartando mensagem");
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
 // Reconecta ao ThingsBoard se desconectado
 void reconectarMQTT()
 {
-    if (!mqttClient.connected()) // Se não estiver conectado
+    // Mantido por compatibilidade, reconexão é gerenciada pela task MQTT
+    if (!mqttClient.connected())
     {
-        unsigned long currentMillis = millis();
-        // Tenta reconectar apenas após o intervalo definido
-        if (currentMillis - lastMQTTReconnectAttempt >= MQTT_RECONNECT_INTERVAL_MS)
-        {
-            lastMQTTReconnectAttempt = currentMillis; // Atualiza o tempo da última tentativa
-            Serial.println("Tentando reconectar ao ThingsBoard...");
-            if (!conectarMQTT()) // Tenta conectar uma vez
-            {
-                Serial.println("Reconexão MQTT falhou; tentaremos novamente mais tarde.");
-            }
-        }
+        conectarMQTT();
     }
 }
 
@@ -104,6 +155,53 @@ bool isMQTTConnected()
 {
     return mqttClient.connected();
 }
+
+/**
+ * Publica dados de telemetria diretamente ao ThingsBoard
+ * Usado pelo telemetry_scheduler para descarregar fila e enviar dados
+ * Retorna true se sucesso, false caso contrário
+ */
+bool mqttPublishTelemetry(const String &jsonPayload)
+{
+    if (!mqttClient.connected())
+    {
+        return false;
+    }
+
+    if (mqttClient.publish("v1/devices/me/telemetry", jsonPayload.c_str()))
+    {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Atualiza o estado de conexão no scheduler de telemetria
+ * Chamado quando a conexão MQTT muda
+ */
+static void updateTelemetryConnectionState()
+{
+    // Estado 1: Online (conectado MQTT)
+    // Estado 0: Offline (sem conexão MQTT)
+    if (mqttClient.connected())
+    {
+        updateConnectionState(1); // CONN_ONLINE
+    }
+    else
+    {
+        updateConnectionState(0); // CONN_OFFLINE
+    }
+}
+
+// Estrutura para armazenar resultados do cálculo RMS Triaxial
+typedef struct
+{
+    float mediaX, mediaY, mediaZ; // Componentes DC (Gravidade)
+    float rmsX, rmsY, rmsZ;       // RMS individual por eixo
+    float valorRMS;               // RMS Triaxial Combinado
+    String statusNorma;           // Classificação ISO 10816-3
+} RMSTriaxialResult;
 
 // Calcula o RMS Triaxial com remoção de componente DC (Gravidade)
 // Retorna struct com médias DC, RMS individual e RMS triaxial combinado
@@ -115,7 +213,7 @@ RMSTriaxialResult calcularRMSTriaxial(float *bufferX, float *bufferY, float *buf
     resultado.mediaX = 0.0f;
     resultado.mediaY = 0.0f;
     resultado.mediaZ = 0.0f;
-    
+
     for (int i = 0; i < numAmostras; i++)
     {
         resultado.mediaX += bufferX[i];
@@ -130,23 +228,22 @@ RMSTriaxialResult calcularRMSTriaxial(float *bufferX, float *bufferY, float *buf
     float somaX = 0.0f, somaY = 0.0f, somaZ = 0.0f;
     for (int i = 0; i < numAmostras; i++)
     {
-        float acX = bufferX[i] - resultado.mediaX;  // Remove componente DC do eixo X
-        float acY = bufferY[i] - resultado.mediaY;  // Remove componente DC do eixo Y
-        float acZ = bufferZ[i] - resultado.mediaZ;  // Remove componente DC do eixo Z
-        
+        float acX = bufferX[i] - resultado.mediaX; // Remove componente DC do eixo X
+        float acY = bufferY[i] - resultado.mediaY; // Remove componente DC do eixo Y
+        float acZ = bufferZ[i] - resultado.mediaZ; // Remove componente DC do eixo Z
+
         somaX += acX * acX;
         somaY += acY * acY;
         somaZ += acZ * acZ;
     }
-    
     resultado.rmsX = sqrt(somaX / numAmostras);
     resultado.rmsY = sqrt(somaY / numAmostras);
     resultado.rmsZ = sqrt(somaZ / numAmostras);
 
     // 3. VETOR RESULTANTE: Calcula RMS Triaxial Combinado
     // RMS_total = sqrt(RMS_X^2 + RMS_Y^2 + RMS_Z^2)
-    resultado.valorRMS = sqrt(resultado.rmsX * resultado.rmsX + 
-                              resultado.rmsY * resultado.rmsY + 
+    resultado.valorRMS = sqrt(resultado.rmsX * resultado.rmsX +
+                              resultado.rmsY * resultado.rmsY +
                               resultado.rmsZ * resultado.rmsZ);
 
     // 4. Classificação baseada na ISO 10816-3 (Classe II)
@@ -166,58 +263,20 @@ RMSTriaxialResult calcularRMSTriaxial(float *bufferX, float *bufferY, float *buf
     return resultado;
 }
 
-// Atualiza estado MQTT e envia dados a cada 5 segundos
+/**
+ * Calcula apenas o valor RMS Triaxial (versão simplificada para o scheduler)
+ * Retorna float com o valor RMS Triaxial combinado
+ */
+float calcularRMSTriaxialSimplificado(float *bufferX, float *bufferY, float *bufferZ, int numAmostras)
+{
+    RMSTriaxialResult resultado = calcularRMSTriaxial(bufferX, bufferY, bufferZ, numAmostras);
+    return resultado.valorRMS;
+}
+
+// Compat: chamada no loop principal não precisa fazer nada
 void updateMQTT()
 {
-    unsigned long currentMillis = millis();
-    
-    // Mantém a conexão MQTT ativa
-    if (!mqttClient.connected())
-    {
-        reconectarMQTT();
-    }
-    
-    mqttClient.loop(); // Processa mensagens MQTT
-
-    // Envia dados a cada 5 segundos
-    if (currentMillis - lastMQTTSendTime >= MQTT_SEND_INTERVAL_MS)
-    {
-        lastMQTTSendTime = currentMillis;
-        
-        if (hasPendingData)
-        {
-            // Calcula RMS a partir dos dados armazenados
-            int rssi = getWiFiRSSI();
-            int battery_level = getBatteryPercentage();
-
-            String payloadStr = "{";
-            payloadStr += "\"status_ia\":\"" + lastPredictedStatus + "\",";
-            payloadStr += "\"confianca\":" + String(lastConfidence, 2) + ",";
-            payloadStr += "\"rms_velocidade\":" + String(lastRMSValue, 2) + ",";
-            payloadStr += "\"norma_iso\":\"" + lastNormaStatus + "\",";
-            payloadStr += "\"dispositivo\":\"EVA_01\",";
-            payloadStr += "\"rssi\":" + String(rssi) + ",";
-            payloadStr += "\"battery_level\":" + String(battery_level) + ",";
-            payloadStr += "\"timestamp\":" + String(currentMillis);
-            payloadStr += "}";
-
-            // Converte String para char* para publicação MQTT
-            char payload[512];
-            payloadStr.toCharArray(payload, sizeof(payload));
-
-            // Publica no tópico padrão de telemetria do ThingsBoard
-            if (mqttClient.publish("v1/devices/me/telemetry", payload))
-            {
-                Serial.printf("[MQTT] Telemetria enviada: %s\n", lastPredictedStatus.c_str());
-            }
-            else
-            {
-                Serial.println("[MQTT] Erro ao enviar telemetria!");
-            }
-            
-            hasPendingData = false; // Limpa flag após envio
-        }
-    }
+    // A task MQTT executa loop() e publica mensagens; manter chamada para compatibilidade
 }
 
 // Esta função deve ser chamada logo após a inferência do TinyML
@@ -226,16 +285,38 @@ void sendData(String predicaoIA, float confianca, float *bufferX, float *bufferY
 {
     // Calcula RMS Triaxial (com remoção de componente DC)
     RMSTriaxialResult rmsResultado = calcularRMSTriaxial(bufferX, bufferY, bufferZ, numAmostras);
+    // Monta payload JSON
+    unsigned long currentMillis = millis();
+    int rssi = getWiFiRSSI();
+    int battery_level = getBatteryPercentage();
 
-    // Armazena dados para envio periódico (SEPARAÇÃO CLARA: inferência ≠ envio)
-    lastPredictedStatus = predicaoIA;
-    lastConfidence = confianca;
-    lastRMSValue = rmsResultado.valorRMS;
-    lastNormaStatus = rmsResultado.statusNorma;
-    hasPendingData = true; // Marca como pendente para envio no próximo ciclo
+    String payloadStr = "{";
+    payloadStr += "\"status_ia\":\"" + predicaoIA + "\",";
+    payloadStr += "\"confianca\":" + String(confianca, 2) + ",";
+    payloadStr += "\"rms_velocidade\":" + String(rmsResultado.valorRMS, 2) + ",";
+    payloadStr += "\"norma_iso\":\"" + rmsResultado.statusNorma + "\",";
+    payloadStr += "\"dispositivo\":\"EVA_01\",";
+    payloadStr += "\"rssi\":" + String(rssi) + ",";
+    payloadStr += "\"battery_level\":" + String(battery_level) + ",";
+    payloadStr += "\"timestamp\":" + String(currentMillis);
+    payloadStr += "}";
 
-    Serial.printf("[INFERÊNCIA] DC(X/Y/Z): %.2f/%.2f/%.2f | RMS(X/Y/Z): %.2f/%.2f/%.2f | RMS_Total: %.2f mm/s | Status: %s | Confiança: %.2f%%\n",
-                  rmsResultado.mediaX, rmsResultado.mediaY, rmsResultado.mediaZ, 
-                  rmsResultado.rmsX, rmsResultado.rmsY, rmsResultado.rmsZ, 
-                  rmsResultado.valorRMS, rmsResultado.statusNorma.c_str(), confianca);
+    // Enfileira para a task MQTT (não bloqueante)
+    if (mqttQueue != NULL)
+    {
+        TelemetryMessage msg;
+        memset(&msg, 0, sizeof(msg));
+        payloadStr.toCharArray(msg.payload, sizeof(msg.payload));
+        msg.timestamp = currentMillis;
+
+        if (xQueueSend(mqttQueue, &msg, 0) != pdTRUE)
+        {
+            Serial.println("[MQTT] Fila cheia: mensagem descartada");
+        }
+    }
+
+    // Serial.printf("[INFERÊNCIA] DC(X/Y/Z): %.2f/%.2f/%.2f | RMS(X/Y/Z): %.2f/%.2f/%.2f | RMS_Total: %.2f mm/s | Status: %s | Confiança: %.2f%%\n",
+    //               rmsResultado.mediaX, rmsResultado.mediaY, rmsResultado.mediaZ,
+    //               rmsResultado.rmsX, rmsResultado.rmsY, rmsResultado.rmsZ,
+    //               rmsResultado.valorRMS, rmsResultado.statusNorma.c_str(), confianca);
 }

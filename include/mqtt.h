@@ -1,20 +1,31 @@
 #ifndef MQTT_H
 #define MQTT_H
 
-// Inicializa o módulo MQTT (WiFi e conexão)
+#include <Arduino.h>
+
+// Inicializa o módulo MQTT (cria tarefa e fila)
 void initMQTT();
 
-// Mantém MQTT ativo e envia dados a cada 5 segundos
-// Deve ser chamada no loop principal
+// Compatibilidade: chamada no loop principal é agora não bloqueante/sem efeito
 void updateMQTT();
 
-// Envia dados para o ThingsBoard (chamada internamente a cada 5s)
+// Enfileira dados de telemetria para envio assíncrono (não bloqueante)
 void sendData(String predicaoIA, float confianca, float *bufferX, float *bufferY, float *bufferZ, int numAmostras);
-
-// Reconecta ao ThingsBoard se desconectado
-void reconectarMQTT();
 
 // Retorna se o cliente MQTT está conectado
 bool isMQTTConnected();
+
+/**
+ * Publica payload JSON diretamente ao ThingsBoard
+ * Usado por telemetry_scheduler para envio de dados
+ * Retorna true se sucesso
+ */
+bool mqttPublishTelemetry(const String &jsonPayload);
+
+/**
+ * Calcula RMS Triaxial simplificado para armazenamento em Flash
+ * Retorna apenas o valor RMS combinado (não struct completa)
+ */
+float calcularRMSTriaxialSimplificado(float *bufferX, float *bufferY, float *bufferZ, int numAmostras);
 
 #endif // MQTT_H

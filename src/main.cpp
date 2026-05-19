@@ -7,6 +7,8 @@
 #include "power_management.h"
 #include "mqtt.h"
 #include "wifi_management.h"
+#include "storage_queue.h"
+#include "telemetry_scheduler.h"
 
 // Variável preservada durante o Deep Sleep
 RTC_DATA_ATTR OperationMode currentMode = MONITORING;
@@ -18,6 +20,7 @@ static MenuScreen menuScreen = MENU_CLOSED;
 static int menuTopSelection = 0;
 static OperationMode menuSelectedMode = MONITORING;
 static VisualizationMode currentVisualizationMode = RMS_VIEW;
+static unsigned long lastTelemetryDataEnqueueTime = 0;
 static VisualizationMode menuSelectedVisualizationMode = RMS_VIEW;
 
 void setup()
@@ -62,6 +65,19 @@ void setup()
 #endif
   initMQTT(); // Inicializa conexão MQTT com ThingsBoard
 
+#if DEBUG_MODE
+  Serial.println(F("Inicializando Sistema de Armazenamento (LittleFS)..."));
+#endif
+  if (!initStorageQueue())
+  {
+    Serial.println(F("ERRO: Falha ao inicializar LittleFS. Sistema de resiliência desativado!"));
+  }
+
+#if DEBUG_MODE
+  Serial.println(F("Inicializando Scheduler de Telemetria..."));
+#endif
+  initTelemetryScheduler();
+
   // Handle wake from deep sleep if applicable
 #if DEBUG_MODE
   Serial.println(F("Verificando wake from sleep..."));
@@ -81,7 +97,19 @@ void loop()
   unsigned long currentMicros = micros();
   unsigned long currentMillis = millis();
 
+  // ========================================================================
+  // ATUALIZAR ESTADO DE CONEXÃO (Máquina de Estados)
+  // ========================================================================
+  updateConnectionState(isMQTTConnected() ? 1 : 0);
+
+  // ========================================================================
+  // PROCESSAMENTO DE TELEMETRIA COM SCHEDULER (Temporização não-bloqueante)
+  // ========================================================================
+  processTelemetrySchedule();
+
+  // ========================================================================
   // Task 1: Gestão de Botões e Estado
+  // ========================================================================
   checkSleepButton(currentMillis);
 
   if (checkSelectorButton(currentMillis))
@@ -152,21 +180,37 @@ void loop()
 
   if (currentMode == MONITORING)
   {
-    if (hasNewData)
+    // A amostragem/captura de dados já ocorre a 1 kHz no início do loop principal
+    // através da função sampleAccelerometer(), mantendo os buffers sempre atualizados.
+
+    // 1. GERAÇÃO DO TELEMETRYDATA: Processamento dos buffers capturados a 1 kHz
+    float *x = getWaveBufferX();
+    float *y = getWaveBufferY();
+    float *z = getWaveBufferZ();
+    int bufferSize = WAVE_BUFFER_SIZE;
+
+    // ADICIONAR A LOGICA DE CLASSIFICAÇÃO DE IA (TinyML) AQUI, utilizando os dados dos buffers X/Y/Z
+    //  Simulação: resultado da inferência de IA (TinyML)
+    String statusPredito = "Saudável";
+    float confianca = 0.95f;
+
+    // Calcula o RMS Triaxial para compor a telemetria
+    float rmsTriaxial = calcularRMSTriaxialSimplificado(x, y, z, bufferSize);
+
+    // Geração de TELEMETRYDATA
+    //  Cria a estrutura de dados de telemetria
+    TelemetryData telemetryData = {
+        statusPredito,
+        confianca,
+        rmsTriaxial,
+        x, y, z, bufferSize};
+
+    // QUEUETELEMETRY apenas no intervalo definido
+    if (currentMillis - lastTelemetryDataEnqueueTime >= TELEMETRY_INTERVAL_MS)
     {
-      // Aqui entram as funções de TinyML e análise FFT (Manutenção Preditiva)
-      // EXEMPLO: Simular resultado de inferência para enviar via MQTT
-      float *x = getWaveBufferX();
-      float *y = getWaveBufferY();
-      float *z = getWaveBufferZ();
-      int bufferSize = WAVE_BUFFER_SIZE;
-
-      // Simulação: resultado da inferência de ML
-      String statusPredito = "Saudável"; // Resultado do TinyML
-      float confianca = 0.95f;           // Confiança do modelo (0-1)
-
-      // Envia dados para MQTT (armazena para envio a cada 5s)
-      sendData(statusPredito, confianca, x, y, z, bufferSize);
+      lastTelemetryDataEnqueueTime = currentMillis;
+      // 2. QUEUETELEMETRY: Enfileira os dados para o scheduler (MQTT ou armazenamento local)
+      queueTelemetryData(telemetryData);
     }
   }
   else if (hasNewData)
@@ -178,9 +222,6 @@ void loop()
     int lastIdx = (*getWaveIndex() - 1 + WAVE_BUFFER_SIZE) % WAVE_BUFFER_SIZE;
     Serial.printf("%.2f,%.2f,%.2f\n", x[lastIdx], y[lastIdx], z[lastIdx]);
   }
-
-  // Task 4: Update MQTT (envio periódico a cada 5 segundos)
-  updateMQTT();
 
   // Task 5: Update display at lower priority (10 Hz)
   if (currentMillis - lastDisplayTime >= DISPLAY_INTERVAL)
