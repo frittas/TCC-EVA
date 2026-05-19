@@ -9,6 +9,7 @@
 #include "battery_management.h"
 #include "sensor_mpu6050.h"
 #include "mqtt.h"
+#include "fft_analysis.h"
 
 static Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -229,25 +230,116 @@ void drawWaveformRMS(int top, int bottom, const char *label)
   }
 }
 
-void drawWaveformAxes()
+void drawFFTPlot(int top, int bottom, const char *label)
 {
-  // Substitui exibição dos eixos por RMS triaxial
-  const int topMargin = 26;
-  const int waveHeight = 32; // Ocupar área maior agora que o rodapé está livre
-  drawWaveformRMS(topMargin, topMargin + waveHeight, "RMS");
+  float *bx = getWaveBufferX();
+  float *by = getWaveBufferY();
+  float *bz = getWaveBufferZ();
+  int *indexPtr = getWaveIndex();
+  float magnitudes[FFT_DISPLAY_BINS];
+
+  calculateTriaxialFFT(bx, by, bz, WAVE_BUFFER_SIZE, *indexPtr, magnitudes, FFT_DISPLAY_BINS);
+
+  float maxMag = 0.001f;
+  for (int i = 0; i < FFT_DISPLAY_BINS; i++)
+  {
+    if (magnitudes[i] > maxMag)
+      maxMag = magnitudes[i];
+  }
+
+  display.setCursor(0, top);
+  display.print(label);
+  display.setCursor(SCREEN_WIDTH - 24, top);
+  display.print(F("Hz"));
+
+  const int left = 10;
+  const int right = SCREEN_WIDTH - 2;
+  const int graphTop = top + 10;
+  const int graphBottom = bottom - 2;
+  const int graphHeight = graphBottom - graphTop;
+  const int graphWidth = right - left;
+
+  // Eixo horizontal e linhas de referência
+  display.drawLine(left, graphBottom, right, graphBottom, SSD1306_WHITE);
+  display.drawLine(left, graphTop, right, graphTop, SSD1306_WHITE);
+
+  int prevX = left;
+  int prevY = graphBottom;
+  for (int i = 0; i < FFT_DISPLAY_BINS; i++)
+  {
+    int x = left + (graphWidth * i) / (FFT_DISPLAY_BINS - 1);
+    int y = graphBottom - (int)((magnitudes[i] / maxMag) * graphHeight);
+    y = constrain(y, graphTop, graphBottom);
+
+    if (i > 0)
+    {
+      display.drawLine(prevX, prevY, x, y, SSD1306_WHITE);
+    }
+
+    display.drawLine(x, graphBottom, x, y, SSD1306_WHITE);
+    prevX = x;
+    prevY = y;
+  }
+
+  display.setCursor(left, bottom);
+  display.print(F("0"));
+  display.setCursor(right - 12, bottom);
+  display.print(F("F"));
 }
 
-void drawSelectionMenu(int selectedMode)
+void drawAnalysisView(VisualizationMode viewMode)
+{
+  const int topMargin = 26;
+  const int waveHeight = 32;
+
+  if (viewMode == RMS_VIEW)
+  {
+    drawWaveformRMS(topMargin, topMargin + waveHeight, "RMS");
+  }
+  else
+  {
+    drawFFTPlot(topMargin, topMargin + waveHeight, "FFT");
+  }
+}
+
+void drawTopMenu(int selectedItem)
+{
+  display.setTextSize(1);
+  display.setCursor(15, 22);
+  display.println(F("SELECIONE O ITEM:"));
+
+  // Espaçamento aumentado para sair da área amarela
+  display.setCursor(20, 36);
+  display.print(selectedItem == 0 ? F("> MODO") : F("  MODO"));
+
+  display.setCursor(20, 48);
+  display.print(selectedItem == 1 ? F("> VISUALIZACAO") : F("  VISUALIZACAO"));
+}
+
+void drawModeSubMenu(OperationMode selectedMode)
 {
   display.setTextSize(1);
   display.setCursor(15, 18);
   display.println(F("SELECIONE O MODO:"));
 
   display.setCursor(20, 32);
-  display.print(selectedMode == 0 ? F("> MONITORAR") : F("  MONITORAR"));
+  display.print(selectedMode == MONITORING ? F("> MONITORAR") : F("  MONITORAR"));
 
   display.setCursor(20, 42);
-  display.print(selectedMode == 1 ? F("> COLETAR") : F("  COLETAR"));
+  display.print(selectedMode == DATA_COLLECTION ? F("> COLETAR") : F("  COLETAR"));
+}
+
+void drawVisualizationSubMenu(VisualizationMode selectedView)
+{
+  display.setTextSize(1);
+  display.setCursor(20, 18);
+  display.println(F("VISUALIZACAO"));
+
+  display.setCursor(20, 32);
+  display.print(selectedView == RMS_VIEW ? F("> RMS") : F("  RMS"));
+
+  display.setCursor(20, 42);
+  display.print(selectedView == FFT_VIEW ? F("> FFT") : F("  FFT"));
 }
 
 void drawBigCenteredText(const char *text)
@@ -308,7 +400,14 @@ void updateDisplay()
   display.display();
 }
 
-void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, bool isMenuOpen, OperationMode menuSelectedMode)
+void renderDisplayFrame(unsigned long currentMillis,
+                        OperationMode currentMode,
+                        bool isMenuOpen,
+                        MenuScreen menuScreen,
+                        int menuTopSelection,
+                        OperationMode menuSelectedMode,
+                        VisualizationMode currentVisualizationMode,
+                        VisualizationMode menuSelectedVisualizationMode)
 {
   clearDisplay();
 
@@ -321,11 +420,22 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
     unsigned long remainingMs = getButtonPressTimeRemaining(currentMillis);
     drawSleepCountdown(remainingMs);
     if (currentMode == MONITORING)
-      drawWaveformAxes();
+      drawAnalysisView(currentVisualizationMode);
   }
   else if (isMenuOpen)
   {
-    drawSelectionMenu(menuSelectedMode);
+    if (menuScreen == MENU_TOP)
+    {
+      drawTopMenu(menuTopSelection);
+    }
+    else if (menuScreen == MENU_MODE_SELECT)
+    {
+      drawModeSubMenu(menuSelectedMode);
+    }
+    else if (menuScreen == MENU_VISUALIZATION_SELECT)
+    {
+      drawVisualizationSubMenu(menuSelectedVisualizationMode);
+    }
   }
   else
   {
@@ -333,7 +443,7 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
 
     if (currentMode == MONITORING)
     {
-      drawWaveformAxes();
+      drawAnalysisView(currentVisualizationMode);
     }
     else
     {
@@ -344,11 +454,9 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
   // Exibe o estado da máquina de estados no rodapé, apenas se o menu não estiver aberto
   if (!isMenuOpen)
   {
-    // Animação dos 3 pontos: muda a cada 500ms (ciclo de 0 a 3 pontos)
     int numDots = (currentMillis / 500) % 4;
     char statusMsg[20];
-    
-    // Removemos o status MQTT do rodapé no modo MONITORING para limpar a tela
+
     if (currentMode != MONITORING)
     {
       snprintf(statusMsg, sizeof(statusMsg), "ENVIANDO%.*s", numDots, "...");
@@ -356,6 +464,5 @@ void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, 
     }
   }
 
-  // Update display
   updateDisplay();
 }

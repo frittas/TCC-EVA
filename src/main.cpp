@@ -14,7 +14,11 @@ RTC_DATA_ATTR OperationMode currentMode = MONITORING;
 static unsigned long lastDisplayTime = 0;
 static unsigned long last_interval_us = 0;
 static bool isMenuOpen = false;
+static MenuScreen menuScreen = MENU_CLOSED;
+static int menuTopSelection = 0;
 static OperationMode menuSelectedMode = MONITORING;
+static VisualizationMode currentVisualizationMode = RMS_VIEW;
+static VisualizationMode menuSelectedVisualizationMode = RMS_VIEW;
 
 void setup()
 {
@@ -85,22 +89,55 @@ void loop()
     if (!isMenuOpen)
     {
       isMenuOpen = true;
+      menuScreen = MENU_TOP;
+      menuTopSelection = 0;
       menuSelectedMode = currentMode;
+      menuSelectedVisualizationMode = currentVisualizationMode;
+      Serial.println(F("Menu aberto"));
     }
     else
     {
-      menuSelectedMode = (menuSelectedMode == MONITORING) ? DATA_COLLECTION : MONITORING;
+      if (menuScreen == MENU_TOP)
+      {
+        menuTopSelection = (menuTopSelection == 0) ? 1 : 0;
+        Serial.printf("Menu: Selecionado %s\n", (menuTopSelection == 0) ? "MODO" : "VISUALIZACAO");
+      }
+      else if (menuScreen == MENU_MODE_SELECT)
+      {
+        menuSelectedMode = (menuSelectedMode == MONITORING) ? DATA_COLLECTION : MONITORING;
+        Serial.printf("Menu: Nivel Modo %s\n", (menuSelectedMode == MONITORING) ? "MONITORAR" : "COLETAR");
+      }
+      else if (menuScreen == MENU_VISUALIZATION_SELECT)
+      {
+        menuSelectedVisualizationMode = (menuSelectedVisualizationMode == RMS_VIEW) ? FFT_VIEW : RMS_VIEW;
+        Serial.printf("Menu: Nivel Visualizacao %s\n", (menuSelectedVisualizationMode == RMS_VIEW) ? "RMS" : "FFT");
+      }
     }
-    Serial.printf("Menu: Selecionado %s\n", (menuSelectedMode == MONITORING) ? "MONITORAR" : "COLETAR");
   }
 
   if (wasShortClickDetected())
   {
     if (isMenuOpen)
     {
-      currentMode = menuSelectedMode;
-      isMenuOpen = false;
-      Serial.printf("Modo CONFIRMADO: %s\n", (currentMode == MONITORING) ? "MONITORAMENTO" : "COLETA");
+      if (menuScreen == MENU_TOP)
+      {
+        menuScreen = (menuTopSelection == 0) ? MENU_MODE_SELECT : MENU_VISUALIZATION_SELECT;
+        Serial.printf("Entrando em %s\n", (menuTopSelection == 0) ? "MODO" : "VISUALIZACAO");
+      }
+      else if (menuScreen == MENU_MODE_SELECT)
+      {
+        currentMode = menuSelectedMode;
+        isMenuOpen = false;
+        menuScreen = MENU_CLOSED;
+        Serial.printf("Modo CONFIRMADO: %s\n", (currentMode == MONITORING) ? "MONITORAMENTO" : "COLETA");
+      }
+      else if (menuScreen == MENU_VISUALIZATION_SELECT)
+      {
+        currentVisualizationMode = menuSelectedVisualizationMode;
+        isMenuOpen = false;
+        menuScreen = MENU_CLOSED;
+        Serial.printf("Visualizacao CONFIRMADA: %s\n", (currentVisualizationMode == RMS_VIEW) ? "RMS" : "FFT");
+      }
     }
     else
     {
@@ -149,7 +186,14 @@ void loop()
   if (currentMillis - lastDisplayTime >= DISPLAY_INTERVAL)
   {
     lastDisplayTime = currentMillis;
-    renderDisplayFrame(currentMillis, currentMode, isMenuOpen, menuSelectedMode);
+    renderDisplayFrame(currentMillis,
+                       currentMode,
+                       isMenuOpen,
+                       menuScreen,
+                       menuTopSelection,
+                       menuSelectedMode,
+                       currentVisualizationMode,
+                       menuSelectedVisualizationMode);
   }
   // Serial.println("Loop principal rodando... (Descomente o código para ativar as funcionalidades)"); // Placeholder
 }

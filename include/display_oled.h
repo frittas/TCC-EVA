@@ -35,7 +35,14 @@ void updateDisplay();
 // Draw "Entering sleep" message
 void drawSleepMessage();
 
-void renderDisplayFrame(unsigned long currentMillis, OperationMode currentMode, bool isMenuOpen, OperationMode menuSelectedMode);
+void renderDisplayFrame(unsigned long currentMillis,
+                        OperationMode currentMode,
+                        bool isMenuOpen,
+                        MenuScreen menuScreen,
+                        int menuTopSelection,
+                        OperationMode menuSelectedMode,
+                        VisualizationMode currentVisualizationMode,
+                        VisualizationMode menuSelectedVisualizationMode);
 
 bool checkSelectorButton(unsigned long currentMillis);
 

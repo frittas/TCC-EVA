@@ -7,6 +7,12 @@
 // Operation Modes
 enum OperationMode { MONITORING, DATA_COLLECTION };
 
+// Visualization Modes
+enum VisualizationMode { RMS_VIEW, FFT_VIEW };
+
+// Menu screen states
+enum MenuScreen { MENU_CLOSED, MENU_TOP, MENU_MODE_SELECT, MENU_VISUALIZATION_SELECT };
+
 // I2C Configuration
 #define I2C_SDA 8
 #define I2C_SCL 9
@@ -39,5 +45,9 @@ enum OperationMode { MONITORING, DATA_COLLECTION };
 // Sensor Configuration
 #define WAVE_BUFFER_SIZE 1024
 #define SAMPLE_INTERVAL 1000    // 1000us = 1kHz
+
+// FFT Display Configuration
+#define FFT_DISPLAY_BINS 16
+#define FFT_SAMPLE_WINDOW 64
 
 #endif // CONFIG_H
