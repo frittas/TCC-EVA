@@ -9,7 +9,7 @@ void initMQTT();
 void updateMQTT();
 
 // Envia dados para o ThingsBoard (chamada internamente a cada 5s)
-void enviarDadosParaNuvem(String predicaoIA, float confianca, float *bufferX, float *bufferY, float *bufferZ, int numAmostras);
+void sendData(String predicaoIA, float confianca, float *bufferX, float *bufferY, float *bufferZ, int numAmostras);
 
 // Reconecta ao ThingsBoard se desconectado
 void reconectarMQTT();

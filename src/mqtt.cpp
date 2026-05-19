@@ -222,7 +222,7 @@ void updateMQTT()
 
 // Esta função deve ser chamada logo após a inferência do TinyML
 // Armazena os dados para envio periódico (não envia imediatamente)
-void enviarDadosParaNuvem(String predicaoIA, float confianca, float *bufferX, float *bufferY, float *bufferZ, int numAmostras)
+void sendData(String predicaoIA, float confianca, float *bufferX, float *bufferY, float *bufferZ, int numAmostras)
 {
     // Calcula RMS Triaxial (com remoção de componente DC)
     RMSTriaxialResult rmsResultado = calcularRMSTriaxial(bufferX, bufferY, bufferZ, numAmostras);

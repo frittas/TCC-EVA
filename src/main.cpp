@@ -129,7 +129,7 @@ void loop()
       float confianca = 0.95f;           // Confiança do modelo (0-1)
 
       // Envia dados para MQTT (armazena para envio a cada 5s)
-      enviarDadosParaNuvem(statusPredito, confianca, x, y, z, bufferSize);
+      sendData(statusPredito, confianca, x, y, z, bufferSize);
     }
   }
   else if (hasNewData)
