@@ -50,6 +50,11 @@ enum MenuScreen { MENU_CLOSED, MENU_TOP, MENU_MODE_SELECT, MENU_VISUALIZATION_SE
 #define FFT_DISPLAY_BINS 16
 #define FFT_SAMPLE_WINDOW 64
 
+// RMS display scaling: mínimo usado para normalização do traçado RMS
+#define RMS_DISPLAY_MIN_SCALE 0.05f
+// RMS computation window (samples) when plotting RMS waveform
+#define RMS_WINDOW_SIZE 8
+
 // Telemetry Configuration
 #define TELEMETRY_INTERVAL_MS 10000
 #define QUEUE_FLUSH_TIMEOUT_MS 2000

@@ -198,18 +198,33 @@ void drawWaveformRMS(int top, int bottom, const char *label)
   meanY /= WAVE_BUFFER_SIZE;
   meanZ /= WAVE_BUFFER_SIZE;
 
-  // Cria um buffer temporário de magnitudes AC
+  // Cria um buffer temporário de valores RMS AC (usa acumulação em double para evitar overflow)
   static float magBuf[WAVE_BUFFER_SIZE];
-  float maxMag = 0.001f; // evitar divisão por zero
+  float maxMag = 0.0f;
+  int rmsWindow = min(WAVE_BUFFER_SIZE, RMS_WINDOW_SIZE);
+
   for (int i = 0; i < WAVE_BUFFER_SIZE; i++)
   {
-    int ridx = (idx + i) % WAVE_BUFFER_SIZE;
-    float acX = bx[ridx] - meanX;
-    float acY = by[ridx] - meanY;
-    float acZ = bz[ridx] - meanZ;
-    float mag = sqrt(acX * acX + acY * acY + acZ * acZ);
-    magBuf[i] = mag;
-    if (mag > maxMag) maxMag = mag;
+    double sumSq = 0.0;
+    for (int w = 0; w < rmsWindow; w++)
+    {
+      int ridx = (idx + i + w) % WAVE_BUFFER_SIZE;
+      double acX = (double)bx[ridx] - (double)meanX;
+      double acY = (double)by[ridx] - (double)meanY;
+      double acZ = (double)bz[ridx] - (double)meanZ;
+      sumSq += (acX * acX) + (acY * acY) + (acZ * acZ);
+    }
+
+    double meanSq = sumSq / (double)rmsWindow;
+    float rms = (float)sqrt(meanSq);
+    magBuf[i] = rms;
+    if (rms > maxMag) maxMag = rms;
+  }
+
+  // Evita "auto-zoom" quando a amplitude é muito baixa: aplica um mínimo de escala
+  if (maxMag < RMS_DISPLAY_MIN_SCALE)
+  {
+    maxMag = RMS_DISPLAY_MIN_SCALE;
   }
 
   // Desenha label
